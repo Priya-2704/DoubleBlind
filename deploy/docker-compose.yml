@@ -1,0 +1,106 @@
+# Container mode.
+#
+# The isolation claim is carried by the network topology, not by configuration
+# of the containers themselves: there are four internal networks and the
+# gateway is the only container attached to more than one.  Red can reach the
+# gateway and nothing else; the same for Blue; neither model server is on a
+# network any party is attached to.  Remove the gateway and the graph has no
+# edge between a party and a model.
+#
+#   red  --[red_edge]--  gateway  --[red_model_link]--  red-model
+#   blue --[blue_edge]--    |     --[blue_model_link]-- blue-model
+#
+# `internal: true` means these networks have no gateway to the host or to the
+# internet, so nothing here can be reached from outside or reach out.
+#
+#   docker compose -f deploy/docker-compose.yml up --build
+#   docker compose -f deploy/docker-compose.yml run --rm red
+#
+# What this does NOT give you is stated in docs/THREAT_MODEL.md: these are
+# containers, so the kernel is shared. A container escape defeats all of it.
+
+name: doubleblind
+
+x-common: &common
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+  image: doubleblind:0.1.0
+  environment:
+    DOUBLEBLIND_SECRET: ${DOUBLEBLIND_SECRET:?set DOUBLEBLIND_SECRET before starting}
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  pids_limit: 128
+  tmpfs:
+    - /tmp:size=16m,noexec,nosuid,nodev
+  restart: "no"
+
+services:
+  red-model:
+    <<: *common
+    command: >-
+      python -m doubleblind.model_server
+      --name red-model --host 0.0.0.0 --port 9201
+    networks: [red_model_link]
+    mem_limit: 256m
+    cpus: 0.50
+
+  blue-model:
+    <<: *common
+    command: >-
+      python -m doubleblind.model_server
+      --name blue-model --host 0.0.0.0 --port 9202
+    networks: [blue_model_link]
+    mem_limit: 256m
+    cpus: 0.50
+
+  # The only multi-homed container in the deployment. Everything the design
+  # claims is enforced here, and compromising it defeats all of it at once.
+  gateway:
+    <<: *common
+    command: >-
+      python -m doubleblind.gateway
+      --host 0.0.0.0 --port 9100
+      --red-model red-model:9201
+      --blue-model blue-model:9202
+      --tick-ms 150
+      --audit /artifacts/audit.log
+    networks: [red_edge, blue_edge, red_model_link, blue_model_link]
+    volumes:
+      - audit:/artifacts
+    mem_limit: 256m
+    cpus: 0.50
+    depends_on: [red-model, blue-model]
+
+  # Party containers. Started on demand with `compose run`, not `up`.
+  red:
+    <<: *common
+    command: python scripts/party_shell.py --party red --gateway gateway:9100
+    networks: [red_edge]
+    mem_limit: 128m
+    cpus: 0.25
+    depends_on: [gateway]
+
+  blue:
+    <<: *common
+    command: python scripts/party_shell.py --party blue --gateway gateway:9100
+    networks: [blue_edge]
+    mem_limit: 128m
+    cpus: 0.25
+    depends_on: [gateway]
+
+networks:
+  red_edge:
+    internal: true
+  blue_edge:
+    internal: true
+  red_model_link:
+    internal: true
+  blue_model_link:
+    internal: true
+
+volumes:
+  audit:

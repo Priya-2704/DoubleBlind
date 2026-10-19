@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Run output. artifacts/timing.json is deliberately tracked: it is the
+# measured evidence the README and the Proof Pack quote.
+artifacts/*
+!artifacts/.gitkeep
+!artifacts/timing.json
+
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
