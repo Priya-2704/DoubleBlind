@@ -47,6 +47,27 @@ py -3.12 scripts/measure_timing.py --trials 120 # regenerates artifacts/timing.j
 py -3.12 scripts/verify_log.py artifacts/audit.log
 ```
 
+## The dashboard
+
+```bash
+py -3.12 -m doubleblind.api
+```
+
+Then open <http://127.0.0.1:8800>. Nine tabs over the same engine the demo
+script drives — and **every figure on the page is read from the running
+system**. The DNA tab genuinely restarts the stack into the misconfigured
+deployment. The audit tab genuinely edits an entry on disk, and restores it.
+The timing chart is `artifacts/timing.json`, not an illustration.
+
+Where a control cannot be demonstrated honestly in the current deployment —
+container network isolation while running in process mode, hardware
+hypervisor isolation, microarchitectural channels — the page labels it
+**simulated** instead of showing a number. `/api/status` is the single source
+for that split, so the badge cannot drift from what the engine actually does.
+
+The API is plain `http.server`; the front end is one dependency-free HTML
+file in `web/`. No build step, no npm.
+
 ---
 
 ## The six mechanisms
@@ -182,6 +203,9 @@ doubleblind/
   replay.py        Shadow Replay with Wilson intervals
   proofpack.py     evidence bundle
   harness.py       brings the stack up as real processes
+  api.py           HTTP API over the live engine, for the dashboard
+web/
+  index.html       the dashboard; no build step, no dependencies
 scripts/
   demo.py            the six-act demonstration
   measure_timing.py  the timing experiment
