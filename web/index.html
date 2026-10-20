@@ -507,9 +507,27 @@ function mount(i){
     $("#enginenote").textContent =
       `Python ${STATUS.python} · ${STATUS.isolation_mode} mode · gateway :${STATUS.gateway_port} · tick ${STATUS.tick_ms} ms`;
   }catch(err){
-    $("#enginebadge").outerHTML = badge("blocked","engine offline");
-    $("#enginenote").textContent = "Start it with: py -3.12 -m doubleblind.api";
-    $("#view").innerHTML = `<h2>Engine offline</h2><pre>${esc(err.message)}</pre>`;
+    // Two different failures look identical from here, so name them apart.
+    // Opening this file directly is the common one: fetch("/api/status") then
+    // resolves against file:// and can never reach the engine.
+    const viaFile = location.protocol === "file:";
+    $("#enginebadge").outerHTML = badge("blocked", viaFile ? "wrong address" : "engine offline");
+    $("#enginenote").textContent = viaFile
+      ? "This page must be served by the engine."
+      : "Start it with: py -3.12 -m doubleblind.api";
+    $("#view").innerHTML = viaFile
+      ? `<h2>Opened as a file, not from the engine</h2>
+         <p class="sub">This page is loaded over <code>file://</code>, so its requests resolve
+         against the filesystem instead of the API and no live data can reach it. The dashboard
+         is served <em>by</em> the engine &mdash; it is not a standalone file.</p>
+         <div class="card"><h3>Start the engine</h3>
+           <pre>py -3.12 -m doubleblind.api</pre>
+           <p class="hint" style="margin:12px 0 0">Then open
+           <a href="http://127.0.0.1:8800">http://127.0.0.1:8800</a>.</p></div>`
+      : `<h2>Engine offline</h2>
+         <p class="sub">Nothing answered at <code>${esc(location.origin)}</code>.</p>
+         <div class="card"><h3>Start it</h3><pre>py -3.12 -m doubleblind.api</pre>
+           <p class="hint" style="margin:12px 0 0">Reported: ${esc(err.message)}</p></div>`;
     return;
   }
   mount(Number(location.hash.slice(1)) || 0);
