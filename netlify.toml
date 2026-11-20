@@ -1,0 +1,21 @@
+# Netlify deploys docs/ as-is.
+#
+# There is no build step and there are no environment variables. The site is
+# the dashboard with its fetch calls answered from a recorded run, so it is
+# plain HTML, one script and one JSON file -- nothing to compile and no
+# secrets to inject.
+#
+# The project's env vars (DOUBLEBLIND_SECRET, TINYFISH_API_KEY) belong to
+# Python processes that run on a developer's machine, never here. Nothing
+# server-side executes on this host, so adding them would achieve nothing
+# except leaving live credentials in a third-party dashboard.
+
+[build]
+  publish = "docs"
+  command = ""
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
