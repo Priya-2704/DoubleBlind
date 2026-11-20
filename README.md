@@ -71,6 +71,34 @@ for that split, so the badge cannot drift from what the engine actually does.
 The API is plain `http.server`; the front end is one dependency-free HTML
 file in `web/`. No build step, no npm.
 
+### The hosted copy is a recording, and says so
+
+<https://priya-2704.github.io/DoubleBlind/>
+
+A static host has no engine. The only honest thing to put on one is therefore
+a **recording**: one real capture of what the running system answered, replayed
+into the same page. Every value in `docs/recorded.json` came out of the API at
+capture time — nothing there is hand-written, and if the engine is not running
+there is no snapshot to build.
+
+What the hosted copy loses is stated on its own face, not buried here. A banner
+across the top says nothing is executing. The engine badge reads **recorded
+run** in the same amber the project already uses for *not measured here*. The
+buttons return what the engine answered that day rather than driving it, so
+Shadow Replay always reports the rate it reported then, and the audit tab shows
+a recording of a tamper rather than performing one.
+
+Rebuild it against a running engine:
+
+```bash
+py -3.12 -m doubleblind.api          # terminal 1
+py -3.12 scripts/build_pages.py      # terminal 2
+```
+
+`build_pages.py` asserts every string it rewrites and refuses to build if the
+dashboard has changed underneath it — a page that silently reaches for an API
+that is not there is the one outcome worth failing loudly to avoid.
+
 ---
 
 ## The seven mechanisms
@@ -252,8 +280,11 @@ scripts/
   measure_delta.py   the contamination experiment
   verify_log.py      independent verifier CLI
   party_shell.py     a party, from inside its container
+  build_pages.py     captures a run into docs/ for the hosted snapshot
 deploy/            Dockerfile, docker-compose.yml
-docs/              THREAT_MODEL.md
+docs/              THREAT_MODEL.md, and the GitHub Pages snapshot
+  index.html         the dashboard, with fetch answered from the recording
+  recorded.json      one real capture; the data the page replays
 tests/             43 unit tests, aimed at the controls rather than the happy path
 ```
 
