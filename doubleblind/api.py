@@ -23,6 +23,7 @@ import mimetypes
 import os
 import platform
 import shutil
+import signal
 import sys
 import threading
 import time
@@ -511,6 +512,33 @@ class Handler(BaseHTTPRequestHandler):
         self._dispatch("POST")
 
 
+def _install_shutdown_signals() -> None:
+    """Route termination signals into the KeyboardInterrupt path below.
+
+    ``serve_forever`` runs in the main thread, so a handler that raises unwinds
+    into the ``finally`` that stops the engine -- the same path Ctrl+C takes.
+    Calling ``server.shutdown()`` from the handler instead would deadlock: it
+    waits for the serve_forever loop that the handler is currently suspending.
+
+    This covers an orderly termination request. It cannot cover an outright
+    kill, where no Python runs at all; ``harness`` handles that case by tying
+    the child processes to this one's lifetime.
+    """
+
+    def _raise(signum: int, frame: Any) -> None:
+        raise KeyboardInterrupt
+
+    for name in ("SIGTERM", "SIGBREAK", "SIGHUP"):
+        sig = getattr(signal, name, None)
+        if sig is None:
+            continue
+        try:
+            signal.signal(sig, _raise)
+        except (ValueError, OSError):
+            # Not the main thread, or the platform refuses this signal.
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="DOUBLEBLIND dashboard API")
     ap.add_argument("--host", default="127.0.0.1")
@@ -519,6 +547,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     os.makedirs("artifacts", exist_ok=True)
+    _install_shutdown_signals()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     server.quiet = args.quiet  # type: ignore[attr-defined]
     sys.stderr.write(

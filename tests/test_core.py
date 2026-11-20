@@ -374,6 +374,64 @@ class TestDelta(unittest.TestCase):
             run_arm(arm="contaminated", turns=1, trials=1)
 
 
+class TestHarnessCleanup(unittest.TestCase):
+    """The registry that stops stacks nobody stopped explicitly.
+
+    A leaked gateway is worse than a leaked idle process: it keeps an AuditLog
+    open on the same file the next run will use, so two independent hash chains
+    end up interleaved and the verifier reports a break nobody caused.
+    """
+
+    @staticmethod
+    def _stack():
+        from doubleblind import harness
+
+        # No procs, so nothing is spawned and stop() is a no-op over an empty
+        # list -- this exercises the registry, not the process handling.
+        return harness.Stack(
+            secret="x",
+            audit_path="unused.log",
+            gateway_port=1,
+            red_model_port=2,
+            blue_model_port=3,
+        )
+
+    def test_stack_is_hashable(self) -> None:
+        # The registry is a set. A dataclass left at the default eq=True has
+        # __hash__ set to None, which would break every start() call.
+        s = self._stack()
+        self.assertEqual(len({s, s}), 1)
+
+    def test_two_stacks_are_distinct_registry_entries(self) -> None:
+        # Identity, not field equality: two stacks with identical ports are
+        # still two stacks, and collapsing them would drop one from cleanup.
+        a, b = self._stack(), self._stack()
+        self.assertEqual(len({a, b}), 2)
+
+    def test_stop_deregisters(self) -> None:
+        from doubleblind import harness
+
+        s = self._stack()
+        harness._LIVE.add(s)
+        s.stop()
+        self.assertNotIn(s, harness._LIVE)
+
+    def test_stopping_twice_does_not_raise(self) -> None:
+        # atexit runs after an explicit stop in the normal case, so the second
+        # stop must be harmless rather than an error on the way out.
+        s = self._stack()
+        s.stop()
+        s.stop()
+
+    def test_stop_all_clears_the_registry(self) -> None:
+        from doubleblind import harness
+
+        s = self._stack()
+        harness._LIVE.add(s)
+        harness._stop_all()
+        self.assertNotIn(s, harness._LIVE)
+
+
 class TestProofPackDelta(unittest.TestCase):
     def test_pack_without_a_delta_says_so(self) -> None:
         from doubleblind import proofpack

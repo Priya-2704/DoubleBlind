@@ -44,7 +44,7 @@ SUMMARY   7/7 acts passed in 21.7s
 Tests and measurements:
 
 ```bash
-py -3.12 -m unittest discover -s tests          # 38 tests
+py -3.12 -m unittest discover -s tests          # 43 tests
 py -3.12 scripts/measure_timing.py --trials 120 # regenerates artifacts/timing.json
 py -3.12 scripts/measure_delta.py  --trials 30  # regenerates artifacts/delta.json
 py -3.12 scripts/verify_log.py artifacts/audit.log
@@ -254,7 +254,7 @@ scripts/
   party_shell.py     a party, from inside its container
 deploy/            Dockerfile, docker-compose.yml
 docs/              THREAT_MODEL.md
-tests/             38 unit tests, aimed at the controls rather than the happy path
+tests/             43 unit tests, aimed at the controls rather than the happy path
 ```
 
 ---
