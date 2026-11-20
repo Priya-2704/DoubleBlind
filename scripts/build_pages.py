@@ -156,10 +156,10 @@ BANNER = """
   @media (max-width:640px){ #snapbar{padding:10px 16px} }
 </style>
 <div id="snapbar">
-  <b>Recorded run &mdash; nothing is executing.</b>
-  <span>This page replays one real capture (<span id="snapwhen">&hellip;</span>).
-  The buttons return what the engine answered that day; they are not driving it.
-  To drive it, <a href="REPO_URL">run it locally</a>.</span>
+  <b>Recorded run.</b>
+  <span>Every tab below works &mdash; this page replays one real capture
+  (<span id="snapwhen">&hellip;</span>) of the live system. Buttons return what the
+  engine answered then, rather than driving it now.</span>
 </div>
 """
 
