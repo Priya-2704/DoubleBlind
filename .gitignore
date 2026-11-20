@@ -3,11 +3,12 @@ __pycache__/
 .venv/
 venv/
 
-# Run output. artifacts/timing.json is deliberately tracked: it is the
-# measured evidence the README and the Proof Pack quote.
+# Run output. artifacts/timing.json and artifacts/delta.json are deliberately
+# tracked: they are the measured evidence the README and the Proof Pack quote.
 artifacts/*
 !artifacts/.gitkeep
 !artifacts/timing.json
+!artifacts/delta.json
 
 .DS_Store
 Thumbs.db

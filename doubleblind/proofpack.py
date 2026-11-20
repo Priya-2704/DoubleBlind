@@ -38,6 +38,7 @@ def build(
     audit_key: bytes,
     findings: list[dict[str, Any]] | None = None,
     timing_path: str | None = None,
+    delta_path: str | None = None,
     config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble a pack from the recorded artefacts of one run."""
@@ -47,6 +48,14 @@ def build(
     if timing_path and os.path.exists(timing_path):
         with open(timing_path, encoding="utf-8") as fh:
             timing = json.load(fh)
+
+    # The contamination delta is what lets a reader tell a claim about the
+    # model from a claim about the deployment it was measured in.  A pack
+    # without it still verifies; it just asserts less.
+    contamination: dict[str, Any] | None = None
+    if delta_path and os.path.exists(delta_path):
+        with open(delta_path, encoding="utf-8") as fh:
+            contamination = json.load(fh)
 
     pack: dict[str, Any] = {
         "schema": "doubleblind/proofpack/1",
@@ -69,6 +78,7 @@ def build(
         },
         "findings": findings or [],
         "timing": timing,
+        "contamination_delta": contamination,
         "limitations": [
             "The model under test is a deterministic mock with one seeded "
             "stochastic branch, not a language model.",
@@ -82,6 +92,20 @@ def build(
             "measured.",
         ],
     }
+    if contamination is None:
+        pack["limitations"].append(
+            "No contamination delta accompanies this pack, so it carries no "
+            "evidence distinguishing a property of the model from a property "
+            "of the deployment it was measured in. Run "
+            "scripts/measure_delta.py."
+        )
+    else:
+        pack["limitations"].append(
+            "The contamination delta counts contamination the release scan "
+            "detected. DNA sees verbatim marker propagation only, so the "
+            "shared-arm rate is a lower bound and the clean arm evidences the "
+            "absence of detected contamination, not of contamination."
+        )
     # The pack commits to itself last, so the digest covers everything above.
     pack["pack_sha256"] = sha256(canonical(pack)).hexdigest()
     return pack

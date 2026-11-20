@@ -24,9 +24,10 @@ Python 3.12, standard library only. No third-party dependencies anywhere in the 
 py -3.12 scripts/demo.py
 ```
 
-Six acts, about ten seconds, no setup. Each act states a claim and then passes or fails
-it in front of you. Nothing is staged: the leak in act 3 is produced by actually
-misconfiguring the stack, and the tamper in act 5 actually rewrites the log on disk.
+Seven acts, about twenty seconds, no setup. Each act states a claim and then passes or
+fails it in front of you. Nothing is staged: the leak in act 3 is produced by actually
+misconfiguring the stack, the tamper in act 5 actually rewrites the log on disk, and the
+two arms in act 7 are two real deployments measured under the same load.
 
 ```
 ACT 1  No path from a party to the model              [PASS]
@@ -35,15 +36,17 @@ ACT 3  Contamination DNA catches a real misconfiguration [PASS]
 ACT 4  Shadow Replay reports a rate, not a boolean     [PASS]
 ACT 5  Log edits are evident and localised             [PASS]
 ACT 6  The run emits a Proof Pack                      [PASS]
+ACT 7  How much of a result is the environment         [PASS]
 
-SUMMARY   6/6 acts passed in 9.5s
+SUMMARY   7/7 acts passed in 21.7s
 ```
 
 Tests and measurements:
 
 ```bash
-py -3.12 -m unittest discover -s tests          # 28 tests
+py -3.12 -m unittest discover -s tests          # 38 tests
 py -3.12 scripts/measure_timing.py --trials 120 # regenerates artifacts/timing.json
+py -3.12 scripts/measure_delta.py  --trials 30  # regenerates artifacts/delta.json
 py -3.12 scripts/verify_log.py artifacts/audit.log
 ```
 
@@ -70,10 +73,11 @@ file in `web/`. No build step, no npm.
 
 ---
 
-## The six mechanisms
+## The seven mechanisms
 
 | Mechanism | What it does | Where |
 |---|---|---|
+| **Contamination delta** | Two-arm controlled experiment: the same workload against a clean and a shared deployment, so a property of the model can be told from a property of the environment. | `delta.py` |
 | **Private sandboxes** | One model server and one session per party. No shared context store, no shared cache. | `harness.py`, `deploy/docker-compose.yml` |
 | **Secure gateway** | The only path between parties. Routes, redacts, logs, pads, quarantines. | `gateway.py` |
 | **Contamination DNA** | Per-session canary markers. A marker seen outside its own session names the source session and party. | `dna.py` |
@@ -110,6 +114,41 @@ hiding.** A 25 ms tick against a 40 ms gap achieves nothing at all — advantage
 Our pitch deck estimated this as 1.00 → 0.42 for +5.9 ms. That was wrong twice over:
 the cost was understated by a factor of thirty, and 0.42 is not a value a folded AUC
 can take. The measured curve replaces it.
+
+### A short probe of a contaminated stack mostly looks clean
+
+Shadow Replay answers *does this finding reproduce*. It cannot answer whether the stack
+that produced it was clean enough for the question to mean anything. The contamination
+delta does: the same Red workload, under the same concurrent Blue load, against two
+deployments differing in exactly one thing — whether the parties share a model server
+and a context bucket.
+
+The clean arm is a negative control. Contamination is impossible there by construction,
+so every detection it reports is a false positive.
+
+| Session turns | Clean arm | Shared arm | Delta | Intervals |
+|---|---|---|---|---|
+| 1 | 0.00 [0.00, 0.11] | 0.13 [0.05, 0.30] | +0.13 | overlapping |
+| 2 | 0.00 [0.00, 0.11] | 0.50 [0.33, 0.67] | +0.50 | disjoint |
+| 3 | 0.00 [0.00, 0.11] | **1.00** [0.89, 1.00] | +1.00 | disjoint |
+| 4 | 0.00 [0.00, 0.11] | 1.00 [0.89, 1.00] | +1.00 | disjoint |
+| 6 | 0.00 [0.00, 0.11] | 1.00 [0.89, 1.00] | +1.00 | disjoint |
+| 8 | 0.00 [0.00, 0.11] | 1.00 [0.89, 1.00] | +1.00 | disjoint |
+
+*n = 30 Red sessions per cell, Wilson intervals, zero false positives in the clean arm;
+`artifacts/delta.json`.*
+
+**A one-turn probe of the contaminated stack came back clean 87% of the time. At three
+turns it never did.** The window in which another tenant can overwrite the shared
+context bucket opens when a session is primed and closes when that session next reads
+it, so session length is the dose — and a harness that only ever takes one turn is
+sampling the exact condition under which contamination is least visible.
+
+Two honest limits. The shared-arm rate counts contamination the release scan *detected*,
+and DNA sees verbatim marker propagation only, so it is a lower bound. And the clean arm
+evidences the absence of *detected* contamination, which is weaker than the absence of
+contamination. At one turn we report the arms as overlapping rather than claiming the
++0.13 gap: a visible difference in point estimates is not a separation.
 
 ### Shadow Replay changes the verdict
 
@@ -201,19 +240,21 @@ doubleblind/
   audit.py         hash chain, keyed checkpoints, verifier
   timing.py        fixed-tick gate, distinguishing-advantage statistic
   replay.py        Shadow Replay with Wilson intervals
+  delta.py         two-arm contamination experiment, clean arm as control
   proofpack.py     evidence bundle
   harness.py       brings the stack up as real processes
   api.py           HTTP API over the live engine, for the dashboard
 web/
   index.html       the dashboard; no build step, no dependencies
 scripts/
-  demo.py            the six-act demonstration
+  demo.py            the seven-act demonstration
   measure_timing.py  the timing experiment
+  measure_delta.py   the contamination experiment
   verify_log.py      independent verifier CLI
   party_shell.py     a party, from inside its container
 deploy/            Dockerfile, docker-compose.yml
 docs/              THREAT_MODEL.md
-tests/             28 unit tests, aimed at the controls rather than the happy path
+tests/             38 unit tests, aimed at the controls rather than the happy path
 ```
 
 ---

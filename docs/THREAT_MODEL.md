@@ -68,6 +68,7 @@ network; in container mode, removing it leaves no path from any party to any mod
 | Observable timing channel is reduced | Fixed-tick release | Measured curve in README; `artifacts/timing.json` |
 | Log edits are evident and localised | SHA-256 chain plus per-entry content digest; keyed checkpoints | Demo act 5; `TestAudit` |
 | A finding reports a rate, not a boolean | Shadow Replay across independently opened sessions, Wilson interval | Demo act 4 |
+| A result attributable to the deployment is distinguishable from one attributable to the model | Two-arm experiment: the same workload against a clean and a shared topology under the same concurrent load, with the clean arm as a negative control | Demo act 7; measured curve in README; `artifacts/delta.json`; `TestDelta` |
 
 A design note worth stating: Blue's advisory is **constructed from a closed vocabulary**
 rather than scanned for leaked payload. We built the scanning version first and it
@@ -129,6 +130,16 @@ rotated. Not implemented.
 Someone points two parties at one model endpoint to save memory, or enables a shared
 cache for throughput. Most likely failure in production, and the one DNA catches
 reliably. Reproduced on demand by `scripts/demo.py --only 3`.
+
+How badly it bites is now measured rather than asserted (`scripts/measure_delta.py`),
+and the measurement changes the operational advice. A one-turn probe of a stack in this
+state came back clean 87% of the time; at three turns it never did. The exposure window
+opens when a session is primed and closes when that session next reads, so session
+length is the dose. **A harness that tests in single turns is sampling the condition
+under which this failure is least visible** — which is the configuration most likely to
+let a misconfigured deployment pass review. Any check for this failure must hold
+sessions open across several turns, under concurrent load from a second tenant, or it is
+not testing for it.
 
 **2. A leak that carries no marker.**
 Semantic influence rather than copied text: the model's behaviour in session B is shaped

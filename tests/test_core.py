@@ -277,5 +277,120 @@ class TestReplayStats(unittest.TestCase):
             self.assertLessEqual(high, 1.0)
 
 
+class TestDelta(unittest.TestCase):
+    """The contamination delta's reporting logic.
+
+    The experiment itself needs two live stacks and is exercised by
+    scripts/measure_delta.py and act 7.  What is tested here is the part that
+    would fail silently: a wrong reading of the two arms, or a clean-arm false
+    positive that does not reach the report.
+    """
+
+    @staticmethod
+    def _arm(name: str, contaminated: int, trials: int = 20, turns: int = 4):
+        from doubleblind.delta import ArmResult
+        from doubleblind.replay import wilson
+
+        low, high = wilson(contaminated, trials)
+        return ArmResult(
+            arm=name,
+            turns=turns,
+            trials=trials,
+            contaminated=contaminated,
+            blue_sessions=100,
+            ci_low=low,
+            ci_high=high,
+        )
+
+    def _point(self, clean: int, shared: int, turns: int = 4):
+        from doubleblind.delta import DeltaPoint
+
+        return DeltaPoint(
+            turns=turns,
+            clean=self._arm("clean", clean, turns=turns),
+            shared=self._arm("shared", shared, turns=turns),
+        )
+
+    def test_delta_is_the_difference_between_the_arms(self) -> None:
+        point = self._point(clean=0, shared=20)
+        self.assertAlmostEqual(point.delta, 1.0)
+
+    def test_separated_arms_are_reported_disjoint(self) -> None:
+        self.assertTrue(self._point(clean=0, shared=20).disjoint)
+
+    def test_overlapping_arms_are_not_reported_disjoint(self) -> None:
+        # 0/20 and 3/20 have overlapping Wilson intervals at n=20.  The weaker
+        # reading is the correct one: a visible gap in the point estimates is
+        # not a separation.
+        self.assertFalse(self._point(clean=0, shared=3).disjoint)
+
+    def test_equal_arms_are_not_reported_disjoint(self) -> None:
+        self.assertFalse(self._point(clean=4, shared=4).disjoint)
+
+    def test_clean_arm_detections_are_counted_as_false_positives(self) -> None:
+        from doubleblind.delta import DeltaResult
+
+        # Contamination cannot occur in the clean arm, so anything it reports
+        # is the detector over-reporting and must surface rather than be
+        # averaged away.
+        result = DeltaResult(
+            points=[self._point(clean=0, shared=20, turns=1),
+                    self._point(clean=2, shared=20, turns=4)]
+        )
+        self.assertEqual(result.false_positives, 2)
+
+    def test_a_clean_control_reports_no_false_positives(self) -> None:
+        from doubleblind.delta import DeltaResult
+
+        result = DeltaResult(points=[self._point(clean=0, shared=17)])
+        self.assertEqual(result.false_positives, 0)
+
+    def test_lookup_of_an_unmeasured_session_length_is_none(self) -> None:
+        from doubleblind.delta import DeltaResult
+
+        result = DeltaResult(points=[self._point(clean=0, shared=5, turns=4)])
+        self.assertIsNotNone(result.at(4))
+        self.assertIsNone(result.at(9))
+
+    def test_json_carries_both_arms_and_the_lower_bound_caveat(self) -> None:
+        from doubleblind.delta import DeltaResult
+
+        payload = DeltaResult(points=[self._point(clean=0, shared=20)]).to_json()
+        arms = payload["points"][0]["arms"]
+        self.assertEqual(set(arms), {"clean", "shared"})
+        self.assertEqual(arms["shared"]["contaminated"], 20)
+        self.assertEqual(payload["false_positives_in_clean_arm"], 0)
+        self.assertTrue(
+            any("lower bound" in lim for lim in payload["limitations"]),
+            "the pack must not quote the rate without its direction of error",
+        )
+
+    def test_unknown_arm_is_refused(self) -> None:
+        from doubleblind.delta import run_arm
+
+        # Guards against a typo silently measuring the clean topology twice and
+        # reporting a delta of zero as a result.
+        with self.assertRaises(ValueError):
+            run_arm(arm="contaminated", turns=1, trials=1)
+
+
+class TestProofPackDelta(unittest.TestCase):
+    def test_pack_without_a_delta_says_so(self) -> None:
+        from doubleblind import proofpack
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "audit.log")
+            key = derive_key(SECRET, "audit-checkpoint")
+            log = audit.AuditLog(path, key)
+            log.append("session_open", {"session_id": "s1"})
+            pack = proofpack.build(audit_path=path, audit_key=key)
+
+        self.assertIsNone(pack["contamination_delta"])
+        self.assertTrue(
+            any("no contamination delta" in lim.lower() for lim in pack["limitations"]),
+            "a pack with no delta must say what it therefore cannot assert",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

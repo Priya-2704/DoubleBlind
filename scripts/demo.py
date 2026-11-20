@@ -1,14 +1,15 @@
 """The DOUBLEBLIND demonstration.
 
-Six acts, each a claim the system either passes or fails in front of you.  Run
-it with no arguments:
+Seven acts, each a claim the system either passes or fails in front of you.
+Run it with no arguments:
 
     py -3.12 scripts/demo.py
 
 Every act prints what it is about to test before it tests it, so a failure is
 as legible as a pass.  Nothing here is staged: the leak in act 3 is produced by
-actually misconfiguring the stack, and the tamper in act 5 actually edits the
-log file on disk.
+actually misconfiguring the stack, the tamper in act 5 actually edits the log
+file on disk, and the two arms in act 7 are two real deployments measured under
+the same load.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from doubleblind import harness, proofpack  # noqa: E402
+from doubleblind import delta, harness, proofpack  # noqa: E402
 from doubleblind.audit import verify  # noqa: E402
 from doubleblind.gateway import ADVISORY_FIELDS, AdvisoryLeak, assert_advisory_clean  # noqa: E402
 from doubleblind.party import Party, probe  # noqa: E402
@@ -269,6 +270,7 @@ def act6_proofpack() -> bool:
         audit_key=derive_key(stack.secret, "audit-checkpoint"),
         findings=findings,
         timing_path="artifacts/timing.json",
+        delta_path="artifacts/delta.json",
         config={"isolation_mode": "process", "tick_ms": 25.0},
     )
     out_path = proofpack.write(pack, "artifacts/proofpack.json")
@@ -284,6 +286,20 @@ def act6_proofpack() -> bool:
         )
     else:
         info("timing evidence: absent (run scripts/measure_timing.py first)")
+    if pack["contamination_delta"]:
+        pts = pack["contamination_delta"]["points"]
+        worst = max(pts, key=lambda p: p["delta"])
+        info(
+            "contamination evidence: delta %+.2f at %d turns (clean arm false "
+            "positives: %d)"
+            % (
+                worst["delta"],
+                worst["turns"],
+                pack["contamination_delta"]["false_positives_in_clean_arm"],
+            )
+        )
+    else:
+        info("contamination evidence: absent (run scripts/measure_delta.py first)")
     if good:
         ok(detail)
         return True
@@ -291,9 +307,69 @@ def act6_proofpack() -> bool:
     return False
 
 
+def act7_delta(trials: int) -> bool:
+    act(
+        7,
+        "How much of a result is the environment, not the model",
+        "the same workload in two deployments, with the clean arm as control",
+    )
+    print("  Two arms, identical except for the deployment topology, both under")
+    print("  the same concurrent Blue load. Clean: one model server and one")
+    print("  context bucket per party -- contamination is impossible, so any")
+    print("  detection is a false positive. Shared: both parties on one server")
+    print("  and one bucket, which is failure mode #1 from the threat model.")
+    print()
+
+    res = delta.measure(
+        turns_grid=(1, 4),
+        trials=trials,
+        audit_path="artifacts/demo-delta.log",
+        progress=lambda s: info("running %s" % s),
+    )
+    print()
+    print(res.render())
+    print()
+
+    if res.false_positives:
+        bad(
+            "clean arm reported %d contaminated trial(s) where contamination "
+            "cannot occur" % res.false_positives
+        )
+        return False
+    ok("clean arm: no contamination detected at either session length")
+
+    short, long = res.at(1), res.at(4)
+    if short is None or long is None:
+        bad("a cell did not run")
+        return False
+
+    info(
+        "one turn against the contaminated stack looked clean %.0f%% of the time"
+        % ((1.0 - short.shared.rate) * 100.0)
+    )
+    info(
+        "four turns against the same stack looked clean %.0f%% of the time"
+        % ((1.0 - long.shared.rate) * 100.0)
+    )
+    if long.disjoint:
+        ok(
+            "shared arm at 4 turns: rate %.2f, interval disjoint from the "
+            "control" % long.shared.rate
+        )
+    else:
+        info(
+            "shared arm at 4 turns: rate %.2f, interval overlaps the control -- "
+            "not separated at this sample size" % long.shared.rate
+        )
+    info("a single-turn harness samples the condition that hides this")
+    info("the rate counts detected contamination only, so it is a lower bound")
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="DOUBLEBLIND demonstration")
     ap.add_argument("--replay-trials", type=int, default=20)
+    ap.add_argument("--delta-trials", type=int, default=20)
     ap.add_argument("--only", type=int, default=0, help="run a single act")
     args = ap.parse_args(argv)
 
@@ -305,6 +381,7 @@ def main(argv: list[str] | None = None) -> int:
         lambda: act4_replay(args.replay_trials),
         act5_tamper,
         act6_proofpack,
+        lambda: act7_delta(args.delta_trials),
     ]
     if args.only:
         acts = [acts[args.only - 1]]
