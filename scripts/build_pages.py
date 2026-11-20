@@ -143,25 +143,11 @@ def capture(base: str) -> dict:
     }
 
 
-BANNER = """
-<style>
-  #snapbar{
-    background:#2a2008;border-bottom:1px solid #6b5412;color:#fde68a;
-    font:13px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
-    padding:10px 18px;display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;
-  }
-  #snapbar b{color:#fbbf24;font-weight:600}
-  #snapbar span{color:#d6c08a}
-  #snapbar a{color:#fbbf24}
-  @media (max-width:640px){ #snapbar{padding:10px 16px} }
-</style>
-<div id="snapbar">
-  <b>Recorded run.</b>
-  <span>Every tab below works &mdash; this page replays one real capture
-  (<span id="snapwhen">&hellip;</span>) of the live system. Buttons return what the
-  engine answered then, rather than driving it now.</span>
-</div>
-"""
+# No top banner: it sat above the masthead and read as chrome rather than as
+# part of the page. The recording is still declared in three places that are
+# part of the design rather than bolted above it -- the sidebar badge, the
+# engine badge, and the overview lead paragraph.
+BANNER = ""
 
 SHIM = """
 <script>
