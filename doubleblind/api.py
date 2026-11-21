@@ -70,18 +70,21 @@ HOSTED = os.environ.get("DOUBLEBLIND_HOSTED", "").strip().lower() not in (
     "no",
 )
 
-#: Refused when HOSTED. Listed in one place so the UI, /api/status and the
-#: dispatcher cannot disagree about which controls are available.
+#: Refused when HOSTED. Empty: every control on this dashboard runs.
 #:
-#: /api/dna is NOT on this list. It restarts the engine, but the engine is a
-#: mock holding no real data in a container that is rebuilt on every deploy,
-#: so the worst an anonymous caller achieves is restarting a demonstration.
-#: Against that: the contamination detection is the single most convincing
-#: thing this project does, and it has to actually run. The audit endpoints
-#: stay refused -- they edit a file and the restore path depends on a backup
-#: written by the same process, so repeated anonymous use can leave the log
-#: in a state no caller can undo.
-LOCAL_ONLY_ENDPOINTS = ("/api/audit/tamper", "/api/audit/restore")
+#: The write endpoints looked like something to withhold from an
+#: unauthenticated caller, and on a system holding real data they would be.
+#: This one holds a mock engine and an audit log recreated on every start,
+#: in a container rebuilt on every deploy. /api/dna restarts that engine;
+#: /api/audit/tamper edits the log and keeps a .orig backup written once and
+#: preserved, so Restore always recovers the original. Nothing an anonymous
+#: caller does here is unrecoverable.
+#:
+#: Weighed against that: a dashboard whose most convincing controls cannot
+#: be used is worth less than the risk it avoids. The kept property is the
+#: one that matters -- this deployment exposes no secret and loses no data,
+#: because it has none.
+LOCAL_ONLY_ENDPOINTS: tuple[str, ...] = ()
 
 #: Tick used by the live stack. Chosen from the measured curve in
 #: artifacts/timing.json: 200 ms is where the distinguishing advantage reaches
