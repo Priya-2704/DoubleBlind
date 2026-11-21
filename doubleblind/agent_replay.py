@@ -53,6 +53,13 @@ RUN_STATUS = "/runs/%s"
 
 TERMINAL = ("COMPLETED", "FAILED", "CANCELLED")
 
+#: The API refuses a batch that would exceed the account's pending-run
+#: allowance -- 429 RATE_LIMIT_EXCEEDED, "the maximum allowed is 20". A
+#: replay of 40 trials is therefore submitted as two waves rather than one
+#: batch, which is a property of the account and not of the experiment: the
+#: runs are still independent, and the statistic is unchanged.
+MAX_PENDING = 20
+
 
 class TinyAgentError(Exception):
     """The agent API refused a request or returned an error envelope."""
@@ -251,6 +258,8 @@ def agent_replay(
     client: TinyAgentClient,
     poll_s: float = 5.0,
     timeout_s: float = 900.0,
+    chunk: int = MAX_PENDING,
+    progress: Any = None,
 ) -> AgentReplayResult:
     """Run one injection ``trials`` times and report a rate with an interval."""
     if not MARKER_RE.fullmatch(marker):
@@ -258,8 +267,15 @@ def agent_replay(
             "marker %r is not a DBX marker; the scan would never match it" % marker
         )
 
-    run_ids = client.submit(fixture_url, goal, trials)
-    runs = client.await_all(run_ids, poll_s=poll_s, timeout_s=timeout_s)
+    runs: list[dict] = []
+    remaining = trials
+    while remaining > 0:
+        wave = min(remaining, chunk)
+        run_ids = client.submit(fixture_url, goal, wave)
+        runs.extend(client.await_all(run_ids, poll_s=poll_s, timeout_s=timeout_s))
+        remaining -= wave
+        if progress and remaining:
+            progress(len(runs), trials)
 
     reproductions = 0
     failed = 0

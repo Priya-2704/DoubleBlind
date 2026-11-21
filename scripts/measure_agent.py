@@ -73,6 +73,10 @@ def main(argv: list[str] | None = None) -> int:
             client=client,
             poll_s=args.poll,
             timeout_s=args.timeout,
+            progress=lambda done, total: print(
+                "  %d/%d runs finished, submitting the next wave..." % (done, total),
+                flush=True,
+            ),
         )
     except TinyAgentError as exc:
         sys.stderr.write("agent API: %s\n" % exc)

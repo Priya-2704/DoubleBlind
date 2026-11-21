@@ -450,9 +450,17 @@ class TestAgentReplay(unittest.TestCase):
         ids = ["run-%d" % i for i in range(len(runs))]
         by_id = dict(zip(ids, runs))
 
+        issued = []
+
         def transport(method, path, body):
             if method == "POST":
-                return {"run_ids": ids, "error": None}
+                # Honour the requested wave size, so chunked submission is
+                # exercised rather than papered over by a fake that always
+                # returns every id.
+                want = len(body["runs"])
+                batch = [i for i in ids if i not in issued][:want]
+                issued.extend(batch)
+                return {"run_ids": batch, "error": None}
             return by_id[path.rsplit("/", 1)[-1]]
 
         return TinyAgentClient(transport=transport)
