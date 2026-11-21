@@ -200,6 +200,19 @@ async function call(method, path, body){
   if(!r.ok) throw new Error(j.error || ("HTTP "+r.status));
   return j;
 }
+const localOnly = ep => (STATUS.local_only_endpoints||[]).includes(ep);
+const localOnlyCard = (what) => `
+  <div class="card">
+    <h3>${esc(what)} is disabled on the hosted copy</h3>
+    <p style="margin:0 0 10px">${badge("simulated","local only")}</p>
+    <p class="hint" style="margin:0 0 10px">This control writes to the audit log on
+    disk or restarts the engine. Nothing authenticates callers here, because locally
+    the operator is the only caller &mdash; on a public URL that is not true, so the
+    gateway refuses it rather than trusting the internet.</p>
+    <p class="hint" style="margin:0">Everything else on this page is live. To drive
+    this one, run the engine yourself:</p>
+    <pre>py -3.12 -m doubleblind.api</pre>
+  </div>`;
 const esc = s => String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const badge = (kind,text)=>`<span class="badge ${kind}"><span class="dot"></span>${esc(text)}</span>`;
 const tile = (k,v,c)=>`<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="c">${c||""}</div></div>`;
@@ -376,7 +389,10 @@ async function dnaTab(v){
   v.innerHTML = head("Contamination DNA",
     "This runs the same extraction prompt against two real deployments: the correct one, and the misconfiguration ranked first in the threat model &mdash; both parties pointed at one model server with one context bucket. The second arm genuinely restarts the stack. It takes a few seconds.",
     [badge("measured","restarts the stack")]) +
-    `<button class="act" id="run">Run both configurations</button><div id="out"></div>`;
+    (localOnly("/api/dna")
+       ? localOnlyCard("Contamination DNA")
+       : `<button class="act" id="run">Run both configurations</button><div id="out"></div>`);
+  if(localOnly("/api/dna")) return;
   $("#run").onclick=async e=>{
     busy(e.target,true);
     try{
@@ -440,9 +456,12 @@ async function auditTab(v){
   v.innerHTML = head("Verifiable audit chain",
     "Every gateway decision is appended with a digest of its own payload and the hash of the entry before it. The tampering button below edits a real entry on disk; nothing here is staged, and <strong>Restore</strong> puts the original back.",
     [badge("measured","SHA-256 chain")]) +
-    `<button class="act danger" id="tamper">Tamper with an entry</button>
-     <button class="act ghost" id="restore">Restore canonical log</button>
-     <div id="msg"></div><div id="out"></div>`;
+    (localOnly("/api/audit/tamper")
+       ? localOnlyCard("Tampering with the log")
+       : `<button class="act danger" id="tamper">Tamper with an entry</button>
+     <button class="act ghost" id="restore">Restore canonical log</button>`) +
+     `<div id="msg"></div><div id="out"></div>`;
+  if(localOnly("/api/audit/tamper")){ await render(); return; }
   $("#tamper").onclick=async e=>{
     busy(e.target,true);
     try{
