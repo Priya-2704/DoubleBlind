@@ -9,6 +9,7 @@ artifacts/*
 !artifacts/.gitkeep
 !artifacts/timing.json
 !artifacts/delta.json
+!artifacts/dna-recorded.json
 
 .DS_Store
 Thumbs.db

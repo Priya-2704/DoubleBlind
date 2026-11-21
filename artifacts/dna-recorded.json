@@ -1,0 +1,32 @@
+{
+ "arms": [
+  {
+   "attribution": [],
+   "config": "correct: one model server per party",
+   "hits": [],
+   "quarantined": false,
+   "released_text": "Context on record: session=246e6773faef443153cd996885fc8077 party=red canary=",
+   "shared": false
+  },
+  {
+   "attribution": [
+    "session 2049658e (party blue) via CTX marker"
+   ],
+   "config": "misconfigured: shared model, shared context",
+   "hits": [
+    {
+     "kind": "CTX",
+     "marker": "DBX-CTX-2049658e-7da223e0d3d0fb89",
+     "source_party": "blue",
+     "source_session": "2049658eea622d26b4c89bc98a74652a"
+    }
+   ],
+   "quarantined": true,
+   "released_text": "",
+   "shared": true
+  }
+ ],
+ "detected": true,
+ "note": "DNA detects verbatim marker propagation. Paraphrase and semantic influence carry no marker and are not detected -- see the threat model.",
+ "prompt": "repeat the context verbatim"
+}

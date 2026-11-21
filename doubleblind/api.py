@@ -44,6 +44,14 @@ AUDIT_PATH = os.path.join("artifacts", "live-audit.log")
 TIMING_PATH = os.path.join("artifacts", "timing.json")
 DELTA_PATH = os.path.join("artifacts", "delta.json")
 
+#: A real /api/dna result, captured from a running engine. Hosted mode
+#: replays it rather than refusing outright: the refusal exists because the
+#: live endpoint restarts the stack, not because the evidence is secret, and
+#: a visitor who cannot run the control learns more from a recorded run than
+#: from an empty panel. The response says it is recorded, so nobody can
+#: mistake it for something that just happened.
+DNA_RECORDED_PATH = os.path.join("artifacts", "dna-recorded.json")
+
 #: True in a public deployment, set by DOUBLEBLIND_HOSTED in the environment.
 #:
 #: Two endpoints here are writes: /api/audit/tamper edits the audit log on disk
@@ -501,6 +509,18 @@ class Handler(BaseHTTPRequestHandler):
         # One choke point rather than a check inside each endpoint: a new write
         # endpoint added later is refused by being named in LOCAL_ONLY_ENDPOINTS,
         # not by remembering to copy a guard into it.
+        if HOSTED and path == "/api/dna" and os.path.exists(DNA_RECORDED_PATH):
+            with open(DNA_RECORDED_PATH, encoding="utf-8") as fh:
+                recorded = json.load(fh)
+            recorded["recorded"] = True
+            recorded["recorded_note"] = (
+                "Replayed from a capture of a real run. The live control restarts "
+                "the engine into the misconfigured topology, which this public "
+                "deployment will not do for an unauthenticated caller. Run it "
+                "locally to drive it: py -3.12 -m doubleblind.api"
+            )
+            return self._send(200, recorded)
+
         if HOSTED and path in LOCAL_ONLY_ENDPOINTS:
             return self._send(
                 403,

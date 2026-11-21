@@ -338,15 +338,17 @@ async function dnaTab(v){
   v.innerHTML = head("Contamination DNA",
     "This runs the same extraction prompt against two real deployments: the correct one, and the misconfiguration ranked first in the threat model &mdash; both parties pointed at one model server with one context bucket. The second arm genuinely restarts the stack. It takes a few seconds.",
     [badge("measured","restarts the stack")]) +
-    (localOnly("/api/dna")
-       ? localOnlyCard("Contamination DNA")
-       : `<button class="act" id="run">Run both configurations</button><div id="out"></div>`);
-  if(localOnly("/api/dna")) return;
+    `<button class="act" id="run">${localOnly("/api/dna")
+        ? "Show the recorded run" : "Run both configurations"}</button><div id="out"></div>`;
   $("#run").onclick=async e=>{
     busy(e.target,true);
     try{
       const r=await call("POST","/api/dna");
-      $("#out").innerHTML = r.arms.map(a=>`<div class="card">
+      $("#out").innerHTML = (r.recorded ? `<div class="card">
+        <h3>Recorded run</h3>
+        <p style="margin:0 0 10px">${badge("simulated","recorded, not live")}</p>
+        <p class="hint" style="margin:0">${esc(r.recorded_note||"")}</p></div>` : "")
+        + r.arms.map(a=>`<div class="card">
         <h3>${esc(a.config)}</h3>
         <p style="margin:0 0 10px">${badge(a.quarantined?"blocked":"measured", a.quarantined?"quarantined":"clean")}</p>
         ${a.attribution.length

@@ -36,6 +36,9 @@ COPY web/ /app/web/
 # but there is no reason to ship a deployment that cannot show its own results.
 COPY artifacts/timing.json /app/artifacts/timing.json
 COPY artifacts/delta.json /app/artifacts/delta.json
+# A captured /api/dna run, replayed by hosted mode in place of restarting
+# the engine for an unauthenticated caller.
+COPY artifacts/dna-recorded.json /app/artifacts/dna-recorded.json
 
 # The live audit log is written here at runtime, so the directory must belong
 # to the user that writes it.
