@@ -42,6 +42,29 @@ from .replay import shadow_replay
 WEB_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 AUDIT_PATH = os.path.join("artifacts", "live-audit.log")
 TIMING_PATH = os.path.join("artifacts", "timing.json")
+DELTA_PATH = os.path.join("artifacts", "delta.json")
+
+#: True in a public deployment, set by DOUBLEBLIND_HOSTED in the environment.
+#:
+#: Two endpoints here are writes: /api/audit/tamper edits the audit log on disk
+#: and /api/dna restarts the engine into the misconfigured topology. Neither has
+#: authentication in front of it, because locally the operator *is* the only
+#: caller. On a public URL that assumption is simply false, so they are refused
+#: rather than guarded by a password this project does not have a way to manage.
+#:
+#: The capability is not hidden when it is unavailable. /api/status publishes
+#: the list, and the dashboard labels those controls local-only in the same
+#: amber it uses for every other control it cannot honestly demonstrate here.
+HOSTED = os.environ.get("DOUBLEBLIND_HOSTED", "").strip().lower() not in (
+    "",
+    "0",
+    "false",
+    "no",
+)
+
+#: Refused when HOSTED. Listed in one place so the UI, /api/status and the
+#: dispatcher cannot disagree about which controls are available.
+LOCAL_ONLY_ENDPOINTS = ("/api/dna", "/api/audit/tamper", "/api/audit/restore")
 
 #: Tick used by the live stack. Chosen from the measured curve in
 #: artifacts/timing.json: 200 ms is where the distinguishing advantage reaches
@@ -118,6 +141,8 @@ def ep_status(_: dict[str, Any]) -> dict[str, Any]:
     return {
         "product": "DOUBLEBLIND",
         "team": "SynapX",
+        "hosted": HOSTED,
+        "local_only_endpoints": list(LOCAL_ONLY_ENDPOINTS) if HOSTED else [],
         "python": platform.python_version(),
         "platform": platform.platform(),
         "isolation_mode": "process",
@@ -473,6 +498,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._serve_static(path)
             return self._send(404, {"error": "no such endpoint", "path": path})
 
+        # One choke point rather than a check inside each endpoint: a new write
+        # endpoint added later is refused by being named in LOCAL_ONLY_ENDPOINTS,
+        # not by remembering to copy a guard into it.
+        if HOSTED and path in LOCAL_ONLY_ENDPOINTS:
+            return self._send(
+                403,
+                {
+                    "error": "%s writes to disk or restarts the engine, and this "
+                    "deployment is public with no authentication. Run it locally "
+                    "to use it: py -3.12 -m doubleblind.api" % path,
+                    "endpoint": path,
+                    "hosted": True,
+                },
+            )
+
         body: dict[str, Any] = {}
         length = int(self.headers.get("Content-Length") or 0)
         if length:
@@ -541,8 +581,15 @@ def _install_shutdown_signals() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="DOUBLEBLIND dashboard API")
-    ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=8800)
+    # A hosted container must bind every interface and take the port its
+    # platform assigns: 127.0.0.1 inside a container is reachable only from
+    # inside that container, so the platform health check sees nothing
+    # listening and fails the deploy while the process runs happily.
+    # Locally the defaults stay loopback, which is where they belong.
+    ap.add_argument("--host", default="0.0.0.0" if HOSTED else "127.0.0.1")
+    ap.add_argument(
+        "--port", type=int, default=int(os.environ.get("PORT") or 8800)
+    )
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv)
 

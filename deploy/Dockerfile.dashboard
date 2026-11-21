@@ -1,0 +1,54 @@
+# The dashboard, for a hosted deployment.
+#
+# deploy/Dockerfile is the isolation demonstration: one image, several roles,
+# no web assets, and a command that prints help and exits. A web service needs
+# the opposite of that, so it gets its own file rather than a flag.
+#
+# Three things here are not decoration, and each one is a deploy that fails
+# without it:
+#
+#   * web/ is copied, because the API serves the dashboard from WEB_ROOT and
+#     the isolation image has no web assets at all.
+#   * /app/artifacts is owned by the runtime user. AUDIT_PATH is relative, so
+#     it resolves under /app, and the first thing main() does is create that
+#     directory -- as a non-root user, against a root-owned /app, that is a
+#     PermissionError before the socket is ever opened.
+#   * The command binds 0.0.0.0 and takes $PORT. Inside a container 127.0.0.1
+#     is reachable only from inside that container, so a platform health check
+#     sees nothing listening and fails a deploy whose process is running fine.
+#
+# DOUBLEBLIND_HOSTED is set here rather than left to the platform: this image
+# exists only to be hosted, and the two endpoints that write to disk or restart
+# the engine must be refused on a public URL that has no authentication.
+
+FROM python:3.12-slim
+
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin doubleblind
+
+WORKDIR /app
+
+COPY doubleblind/ /app/doubleblind/
+COPY scripts/ /app/scripts/
+COPY web/ /app/web/
+
+# The measured evidence the dashboard quotes. Without these the timing tab and
+# the Proof Pack report absent rather than wrong, which is correct behaviour --
+# but there is no reason to ship a deployment that cannot show its own results.
+COPY artifacts/timing.json /app/artifacts/timing.json
+COPY artifacts/delta.json /app/artifacts/delta.json
+
+# The live audit log is written here at runtime, so the directory must belong
+# to the user that writes it.
+RUN chown -R doubleblind:doubleblind /app/artifacts
+
+USER doubleblind
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DOUBLEBLIND_HOSTED=1 \
+    DOUBLEBLIND_SECRET=set-a-real-secret-in-the-platform-environment
+
+EXPOSE 8800
+
+# Shell form, so $PORT is expanded at runtime rather than passed literally.
+CMD python -m doubleblind.api --host 0.0.0.0 --port ${PORT:-8800}
