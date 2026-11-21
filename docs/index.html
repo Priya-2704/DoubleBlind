@@ -389,8 +389,7 @@ async function dnaTab(v){
   v.innerHTML = head("Contamination DNA",
     "This runs the same extraction prompt against two real deployments: the correct one, and the misconfiguration ranked first in the threat model &mdash; both parties pointed at one model server with one context bucket. The second arm genuinely restarts the stack. It takes a few seconds.",
     [badge("measured","restarts the stack")]) +
-    `<button class="act" id="run">${localOnly("/api/dna")
-        ? "Show the recorded run" : "Run both configurations"}</button><div id="out"></div>`;
+    `<button class="act" id="run">Run both configurations</button><div id="out"></div>`;
   $("#run").onclick=async e=>{
     busy(e.target,true);
     try{

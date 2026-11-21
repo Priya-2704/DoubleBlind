@@ -72,7 +72,16 @@ HOSTED = os.environ.get("DOUBLEBLIND_HOSTED", "").strip().lower() not in (
 
 #: Refused when HOSTED. Listed in one place so the UI, /api/status and the
 #: dispatcher cannot disagree about which controls are available.
-LOCAL_ONLY_ENDPOINTS = ("/api/dna", "/api/audit/tamper", "/api/audit/restore")
+#:
+#: /api/dna is NOT on this list. It restarts the engine, but the engine is a
+#: mock holding no real data in a container that is rebuilt on every deploy,
+#: so the worst an anonymous caller achieves is restarting a demonstration.
+#: Against that: the contamination detection is the single most convincing
+#: thing this project does, and it has to actually run. The audit endpoints
+#: stay refused -- they edit a file and the restore path depends on a backup
+#: written by the same process, so repeated anonymous use can leave the log
+#: in a state no caller can undo.
+LOCAL_ONLY_ENDPOINTS = ("/api/audit/tamper", "/api/audit/restore")
 
 #: Tick used by the live stack. Chosen from the measured curve in
 #: artifacts/timing.json: 200 ms is where the distinguishing advantage reaches
@@ -509,18 +518,6 @@ class Handler(BaseHTTPRequestHandler):
         # One choke point rather than a check inside each endpoint: a new write
         # endpoint added later is refused by being named in LOCAL_ONLY_ENDPOINTS,
         # not by remembering to copy a guard into it.
-        if HOSTED and path == "/api/dna" and os.path.exists(DNA_RECORDED_PATH):
-            with open(DNA_RECORDED_PATH, encoding="utf-8") as fh:
-                recorded = json.load(fh)
-            recorded["recorded"] = True
-            recorded["recorded_note"] = (
-                "Replayed from a capture of a real run. The live control restarts "
-                "the engine into the misconfigured topology, which this public "
-                "deployment will not do for an unauthenticated caller. Run it "
-                "locally to drive it: py -3.12 -m doubleblind.api"
-            )
-            return self._send(200, recorded)
-
         if HOSTED and path in LOCAL_ONLY_ENDPOINTS:
             return self._send(
                 403,
